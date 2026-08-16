@@ -252,6 +252,11 @@ function main() {
     if (!zstdAvailable()) { console.error('this Node has no built-in zstd (>= 22.15 required)'); process.exit(2) }
     text = zstdDecompressAll(bytes)
     if (text === null) { console.error('failed to decode ' + logPath); process.exit(2) }
+    const frames = scanZstdFrames(bytes)
+    const lastEnd = frames.length > 0 ? frames[frames.length - 1].end : 0
+    if (lastEnd < bytes.length) {
+      console.warn('末尾撕裂帧已忽略(' + (bytes.length - lastEnd) + ' 字节)——日志可能仍在写入中;稍后重试可获取完整轨迹')
+    }
   } else {
     text = bytes.toString('utf8')
   }
