@@ -180,8 +180,8 @@ export function buildTimeline(events) {
   return { turns, totalTokens }
 }
 
-export function renderHtml(header, timeline) {
-  const rows = timeline.turns.map((turn) => {
+function renderTurns(turns) {
+  return turns.map((turn) => {
     const tools = turn.toolCalls.map((t) =>
       '<div class="tool' + (t.error ? ' err' : '') + '">' + escapeHtml(t.name) + ' ' + escapeHtml(t.brief) + (t.error ? ' <b>✗ ' + escapeHtml(t.error) + '</b>' : '') + '</div>',
     ).join('')
@@ -192,66 +192,87 @@ export function renderHtml(header, timeline) {
       ' · ' + turn.steps.length + ' 步 · ' + turn.toolCalls.length + ' 工具 · 结束: ' + escapeHtml(turn.endReason ?? '-') + '</header>' +
       asks + '<div class="tools">' + tools + '</div>' + assistant + '</section>'
   }).join('\n')
+}
 
-  const t = timeline.totalTokens
-  const total = t.input + t.output + t.cacheRead + t.cacheWrite + t.reasoning
+function pageShell(title, meta, body) {
   return '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<title>会话轨迹 · ' + escapeHtml(String(header?.id ?? 'unknown').slice(0, 8)) + '</title><style>' +
+    '<title>' + title + '</title><style>' +
     'body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;margin:0;background:#0f1420;color:#dde3ee}' +
     '.wrap{max-width:960px;margin:0 auto;padding:24px}' +
     'h1{font-size:20px;margin:0 0 4px}.meta{color:#8a93a6;font-size:12px;margin-bottom:16px}' +
+    'h2{font-size:16px;color:#7ee0ff;margin:20px 0 8px}' +
     '.turn{background:#171d2c;border:1px solid #232c40;border-radius:10px;padding:12px 14px;margin-bottom:12px}' +
     '.turn header{font-size:13px;color:#7ee0ff;margin-bottom:8px}' +
     '.ask{background:#1d2740;border-left:3px solid #4d7cff;padding:8px 10px;border-radius:6px;margin:6px 0;font-size:14px}' +
     '.tool{font-size:12px;color:#aeb8cc;padding:3px 0;border-bottom:1px dashed #232c40;font-family:Menlo,monospace}' +
     '.tool.err{color:#ff9d9d}.assistant{font-size:13px;line-height:1.6;color:#c6cede;margin-top:8px;white-space:pre-wrap}' +
     '</style></head><body><div class="wrap">' +
-    '<h1>会话轨迹 Trajectory</h1>' +
-    '<div class="meta">session ' + escapeHtml(String(header?.id ?? '-')) + ' · 工作区 ' + escapeHtml(header?.cwd ?? '-') +
-    ' · ' + fmtTime(header?.createdAt) + ' · 回合 ' + timeline.turns.length +
-    ' · Token 输入 ' + fmtTokens(t.input) + ' / 输出 ' + fmtTokens(t.output) + ' / 合计 ' + fmtTokens(total) +
-    ' · 由 dsh-trajectory 生成</div>' +
-    rows + '</div></body></html>'
+    '<h1>' + title + '</h1><div class="meta">' + meta + '</div>' + body + '</div></body></html>'
 }
 
-function findNewestLog(dir) {
-  let best = null
+export function renderHtml(header, timeline) {
+  const t = timeline.totalTokens
+  const total = t.input + t.output + t.cacheRead + t.cacheWrite + t.reasoning
+  const title = '会话轨迹 Trajectory'
+  const meta = 'session ' + escapeHtml(String(header?.id ?? '-')) + ' · 工作区 ' + escapeHtml(header?.cwd ?? '-') +
+    ' · ' + fmtTime(header?.createdAt) + ' · 回合 ' + timeline.turns.length +
+    ' · Token 输入 ' + fmtTokens(t.input) + ' / 输出 ' + fmtTokens(t.output) + ' / 合计 ' + fmtTokens(total) +
+    ' · 由 dsh-trajectory 生成'
+  return pageShell(title, meta, renderTurns(timeline.turns))
+}
+
+/**
+ * Render several sessions as one chronological volume: each session is a
+ * chapter with its own heading, sharing one page shell.
+ * @param {Array<{header: object, timeline: object}>} chapters - decoded sessions.
+ * @returns {string} merged HTML document.
+ */
+export function renderHtmlMerged(chapters) {
+  const totalTurns = chapters.reduce((n, c) => n + c.timeline.turns.length, 0)
+  let tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }
+  for (const c of chapters) {
+    const t = c.timeline.totalTokens
+    tokens.input += t.input; tokens.output += t.output
+    tokens.cacheRead += t.cacheRead; tokens.cacheWrite += t.cacheWrite; tokens.reasoning += t.reasoning
+  }
+  const total = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite + tokens.reasoning
+  const body = chapters.map((c) => {
+    return '<h2>会话 ' + escapeHtml(String(c.header?.id ?? '-')) + ' · ' + fmtTime(c.header?.createdAt) +
+      ' · 回合 ' + c.timeline.turns.length + '</h2>' + renderTurns(c.timeline.turns)
+  }).join('\n')
+  const meta = chapters.length + ' 个会话 · 合计回合 ' + totalTurns +
+    ' · Token 合计 ' + fmtTokens(total) + ' · 由 dsh-trajectory 生成'
+  return pageShell('会话轨迹合订 Trajectory Volume', meta, body)
+}
+
+function listLogs(dir) {
+  const logs = []
   const walk = (d) => {
     for (const entry of readdirSync(d, { withFileTypes: true })) {
       const full = join(d, entry.name)
       if (entry.isDirectory()) walk(full)
       else if (entry.name === 'session.jsonl.zstd') {
-        const mtime = statSync(full).mtimeMs
-        if (!best || mtime > best.mtime) best = { path: full, mtime }
+        logs.push({ path: full, mtime: statSync(full).mtimeMs })
       }
     }
   }
   walk(dir)
-  return best
+  logs.sort((a, b) => a.mtime - b.mtime)
+  return logs
 }
 
-function main() {
-  const argv = process.argv.slice(2)
-  const outFlag = argv.indexOf('--out')
-  const outPath = outFlag >= 0 && argv[outFlag + 1] ? resolve(argv[outFlag + 1]) : null
-  const targetArg = argv.find((a) => !a.startsWith('--') && a !== (outFlag >= 0 ? argv[outFlag + 1] : undefined))
-  if (!targetArg) {
-    console.error('usage: node trajectory.mjs <session.jsonl.zstd|sessions-dir> [--out file.html]')
-    process.exit(2)
-  }
-  const target = resolve(targetArg)
-  let logPath = target
-  if (existsSync(target) && statSync(target).isDirectory()) {
-    const newest = findNewestLog(target)
-    if (!newest) { console.error('no session.jsonl.zstd found under ' + target); process.exit(2) }
-    logPath = newest.path
-  }
+function findNewestLog(dir) {
+  const logs = listLogs(dir)
+  return logs.length > 0 ? logs[logs.length - 1] : null
+}
+
+function decodeLog(logPath) {
   const bytes = readFileSync(logPath)
   let text
   if (logPath.endsWith('.zstd')) {
-    if (!zstdAvailable()) { console.error('this Node has no built-in zstd (>= 22.15 required)'); process.exit(2) }
+    if (!zstdAvailable()) return { error: 'this Node has no built-in zstd (>= 22.15 required)' }
     text = zstdDecompressAll(bytes)
-    if (text === null) { console.error('failed to decode ' + logPath); process.exit(2) }
+    if (text === null) return { error: 'failed to decode ' + logPath }
     const frames = scanZstdFrames(bytes)
     const lastEnd = frames.length > 0 ? frames[frames.length - 1].end : 0
     if (lastEnd < bytes.length) {
@@ -261,13 +282,52 @@ function main() {
     text = bytes.toString('utf8')
   }
   const { header, events } = parseSessionLog(text)
-  const timeline = buildTimeline(events)
-  const html = renderHtml(header, timeline)
-  const output = outPath ?? join(process.cwd(), 'trajectory-' + String(header?.id ?? 'session').slice(0, 8) + '.html')
+  return { header, timeline: buildTimeline(events) }
+}
+
+function main() {
+  const argv = process.argv.slice(2)
+  const outFlag = argv.indexOf('--out')
+  const outPath = outFlag >= 0 && argv[outFlag + 1] ? resolve(argv[outFlag + 1]) : null
+  const allFlag = argv.includes('--all')
+  const targetArg = argv.find((a) => !a.startsWith('--') && a !== (outFlag >= 0 ? argv[outFlag + 1] : undefined))
+  if (!targetArg) {
+    console.error('usage: node trajectory.mjs <session.jsonl.zstd|sessions-dir> [--all] [--out file.html]')
+    process.exit(2)
+  }
+  const target = resolve(targetArg)
+
+  if (existsSync(target) && statSync(target).isDirectory() && allFlag) {
+    const logs = listLogs(target)
+    if (logs.length === 0) { console.error('no session.jsonl.zstd found under ' + target); process.exit(2) }
+    const chapters = []
+    for (const entry of logs) {
+      const decoded = decodeLog(entry.path)
+      if (decoded.error) { console.warn('skipping ' + entry.path + ': ' + decoded.error); continue }
+      chapters.push(decoded)
+    }
+    if (chapters.length === 0) { console.error('no decodable logs'); process.exit(2) }
+    const html = renderHtmlMerged(chapters)
+    const output = outPath ?? join(process.cwd(), 'trajectory-volume.html')
+    writeFileSync(output, html)
+    console.log('rendered ' + chapters.length + ' sessions / ' + chapters.reduce((n, c) => n + c.timeline.turns.length, 0) + ' turns to ' + output)
+    console.log('html sha256(前16): ' + createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 16))
+    return
+  }
+
+  let logPath = target
+  if (existsSync(target) && statSync(target).isDirectory()) {
+    const newest = findNewestLog(target)
+    if (!newest) { console.error('no session.jsonl.zstd found under ' + target); process.exit(2) }
+    logPath = newest.path
+  }
+  const decoded = decodeLog(logPath)
+  if (decoded.error) { console.error(decoded.error); process.exit(2) }
+  const html = renderHtml(decoded.header, decoded.timeline)
+  const output = outPath ?? join(process.cwd(), 'trajectory-' + String(decoded.header?.id ?? 'session').slice(0, 8) + '.html')
   writeFileSync(output, html)
-  console.log('rendered ' + timeline.turns.length + ' turns to ' + output)
-  const sha = createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 16)
-  console.log('html sha256(前16): ' + sha)
+  console.log('rendered ' + decoded.timeline.turns.length + ' turns to ' + output)
+  console.log('html sha256(前16): ' + createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 16))
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
