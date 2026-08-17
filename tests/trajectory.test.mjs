@@ -45,6 +45,23 @@ test('buildTimeline groups turns, tools, tokens and end reasons', () => {
   assert.equal(timeline.totalTokens.output, 50)
 })
 
+test('renderHtml embeds the filter toolbar and error flags', () => {
+  const header = { id: 'session-x', cwd: '/work', createdAt: 1700000000000 }
+  const timeline = {
+    turns: [
+      { turn: 0, startedAt: 1, endedAt: 2, endReason: 'completed', ask: 'ok', steps: [], toolCalls: [{ name: 'bash', brief: 'ls', error: null }] },
+      { turn: 1, startedAt: 3, endedAt: 4, endReason: 'completed', ask: 'bad', steps: [], toolCalls: [{ name: 'bash', brief: 'rm', error: 'EXIT_1' }] },
+    ],
+    totalTokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 },
+  }
+  const html = renderHtml(header, timeline)
+  assert.ok(html.includes('id="err-only"'))
+  assert.ok(html.includes('id="kw"'))
+  assert.ok(html.includes('data-error="1"'))
+  assert.ok(html.includes('has-err'))
+  assert.ok(html.includes('data-error="0"'))
+})
+
 test('renderHtml embeds meta, turns and escapes markup', () => {
   const header = { id: 'session-abc123', cwd: '/work', createdAt: 1700000000000 }
   const timeline = {

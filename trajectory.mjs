@@ -185,14 +185,30 @@ function renderTurns(turns) {
     const tools = turn.toolCalls.map((t) =>
       '<div class="tool' + (t.error ? ' err' : '') + '">' + escapeHtml(t.name) + ' ' + escapeHtml(t.brief) + (t.error ? ' <b>✗ ' + escapeHtml(t.error) + '</b>' : '') + '</div>',
     ).join('')
+    const hasError = turn.toolCalls.some((t) => t.error) || turn.endReason === 'error' || turn.endReason === 'blocked' || turn.endReason === 'aborted' || turn.endReason === 'max-tokens'
     const asks = turn.ask ? '<div class="ask">' + escapeHtml(turn.ask.slice(0, 500)) + '</div>' : ''
     const assistant = turn.steps.filter((s) => s.kind === 'assistant').map((s) => '<div class="assistant">' + escapeHtml(s.text.slice(0, 1200)) + '</div>').join('')
-    return '<section class="turn">' +
+    return '<section class="turn' + (hasError ? ' has-err' : '') + '" data-error="' + (hasError ? '1' : '0') + '">' +
       '<header>回合 #' + turn.turn + ' · ' + fmtTime(turn.startedAt) + ' → ' + fmtTime(turn.endedAt) +
       ' · ' + turn.steps.length + ' 步 · ' + turn.toolCalls.length + ' 工具 · 结束: ' + escapeHtml(turn.endReason ?? '-') + '</header>' +
       asks + '<div class="tools">' + tools + '</div>' + assistant + '</section>'
   }).join('\n')
 }
+
+const TOOLBAR = '<div class="toolbar">' +
+  '<label><input type="checkbox" id="err-only"> 只显示出错/阻塞回合</label>' +
+  '<input type="search" id="kw" placeholder="筛选关键词(诉求/工具/正文)">' +
+  '<span id="count"></span></div>'
+
+const TOOLBAR_JS = '<script>(function(){' +
+  'var box=document.getElementById("err-only"),kw=document.getElementById("kw"),count=document.getElementById("count");' +
+  'function apply(){var q=(kw.value||"").toLowerCase(),only=box.checked,n=0;' +
+  'document.querySelectorAll(".turn").forEach(function(t){' +
+  'var hitKw=!q||t.textContent.toLowerCase().indexOf(q)>=0;' +
+  'var hitErr=!only||t.getAttribute("data-error")==="1";' +
+  'var show=hitKw&&hitErr;t.style.display=show?"":"none";if(show)n++;});' +
+  'count.textContent=n+" / "+document.querySelectorAll(".turn").length+" 回合";}' +
+  'box.addEventListener("change",apply);kw.addEventListener("input",apply);apply();})();</script>'
 
 function pageShell(title, meta, body) {
   return '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
@@ -201,13 +217,16 @@ function pageShell(title, meta, body) {
     '.wrap{max-width:960px;margin:0 auto;padding:24px}' +
     'h1{font-size:20px;margin:0 0 4px}.meta{color:#8a93a6;font-size:12px;margin-bottom:16px}' +
     'h2{font-size:16px;color:#7ee0ff;margin:20px 0 8px}' +
+    '.toolbar{display:flex;gap:14px;align-items:center;margin-bottom:14px;font-size:13px;color:#aeb8cc}' +
+    '.toolbar input[type=search]{background:#171d2c;border:1px solid #232c40;color:#dde3ee;padding:5px 10px;border-radius:6px;width:260px}' +
     '.turn{background:#171d2c;border:1px solid #232c40;border-radius:10px;padding:12px 14px;margin-bottom:12px}' +
+    '.turn.has-err{border-color:#5a2f36}' +
     '.turn header{font-size:13px;color:#7ee0ff;margin-bottom:8px}' +
     '.ask{background:#1d2740;border-left:3px solid #4d7cff;padding:8px 10px;border-radius:6px;margin:6px 0;font-size:14px}' +
     '.tool{font-size:12px;color:#aeb8cc;padding:3px 0;border-bottom:1px dashed #232c40;font-family:Menlo,monospace}' +
     '.tool.err{color:#ff9d9d}.assistant{font-size:13px;line-height:1.6;color:#c6cede;margin-top:8px;white-space:pre-wrap}' +
     '</style></head><body><div class="wrap">' +
-    '<h1>' + title + '</h1><div class="meta">' + meta + '</div>' + body + '</div></body></html>'
+    '<h1>' + title + '</h1><div class="meta">' + meta + '</div>' + TOOLBAR + body + TOOLBAR_JS + '</div></body></html>'
 }
 
 export function renderHtml(header, timeline) {
