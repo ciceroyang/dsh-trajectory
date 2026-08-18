@@ -361,9 +361,13 @@ function main() {
     for (const entry of logs) {
       const decoded = decodeLog(entry.path)
       if (decoded.error) { console.warn('skipping ' + entry.path + ': ' + decoded.error); continue }
+      if (window.sinceMs !== null || window.untilMs !== null) {
+        decoded.timeline = sliceTimeline(decoded.timeline, window.sinceMs, window.untilMs)
+        if (decoded.timeline.turns.length === 0) continue
+      }
       chapters.push(decoded)
     }
-    if (chapters.length === 0) { console.error('no decodable logs'); process.exit(2) }
+    if (chapters.length === 0) { console.error('no decodable logs in the window'); process.exit(2) }
     const html = renderHtmlMerged(chapters)
     const output = outPath ?? join(process.cwd(), 'trajectory-volume.html')
     writeFileSync(output, html)
