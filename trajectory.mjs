@@ -120,6 +120,23 @@ function fmtTokens(n) {
   return String(n)
 }
 
+/**
+ * Keep only the turns whose startedAt falls inside [sinceMs, untilMs].
+ * @param {{turns: Array<object>, totalTokens: object}} timeline - built timeline.
+ * @param {number|null} sinceMs - inclusive lower bound (epoch ms).
+ * @param {number|null} untilMs - inclusive upper bound (epoch ms).
+ * @returns {{turns: Array<object>, totalTokens: object}} filtered timeline.
+ */
+export function sliceTimeline(timeline, sinceMs, untilMs) {
+  if (sinceMs === null && untilMs === null) return timeline
+  const turns = timeline.turns.filter((t) => {
+    if (sinceMs !== null && t.startedAt < sinceMs) return false
+    if (untilMs !== null && t.startedAt > untilMs) return false
+    return true
+  })
+  return { turns, totalTokens: timeline.totalTokens, sliced: turns.length !== timeline.turns.length, kept: turns.length }
+}
+
 export function buildTimeline(events) {
   const turns = []
   let current = null
@@ -304,16 +321,37 @@ function decodeLog(logPath) {
   return { header, timeline: buildTimeline(events) }
 }
 
+function flagValue(argv, flag) {
+  const idx = argv.indexOf(flag)
+  return idx >= 0 && argv[idx + 1] ? argv[idx + 1] : null
+}
+
+function parseWindow(argv) {
+  const since = flagValue(argv, '--since')
+  const until = flagValue(argv, '--until')
+  const sinceMs = since ? Date.parse(since + 'T00:00:00Z') : null
+  const untilMs = until ? Date.parse(until + 'T23:59:59Z') : null
+  if (since && !Number.isFinite(sinceMs)) fail2('--since must be YYYY-MM-DD, got ' + since)
+  if (until && !Number.isFinite(untilMs)) fail2('--until must be YYYY-MM-DD, got ' + until)
+  return { sinceMs, untilMs, since, until }
+}
+
+function fail2(message) {
+  console.error(message)
+  process.exit(2)
+}
+
 function main() {
   const argv = process.argv.slice(2)
   const outFlag = argv.indexOf('--out')
   const outPath = outFlag >= 0 && argv[outFlag + 1] ? resolve(argv[outFlag + 1]) : null
   const allFlag = argv.includes('--all')
-  const targetArg = argv.find((a) => !a.startsWith('--') && a !== (outFlag >= 0 ? argv[outFlag + 1] : undefined))
+  const targetArg = argv.find((a) => !a.startsWith('--') && a !== (outFlag >= 0 ? argv[outFlag + 1] : undefined) && a !== flagValue(argv, '--since') && a !== flagValue(argv, '--until'))
   if (!targetArg) {
-    console.error('usage: node trajectory.mjs <session.jsonl.zstd|sessions-dir> [--all] [--out file.html]')
+    console.error('usage: node trajectory.mjs <session.jsonl.zstd|sessions-dir> [--all] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--out file.html]')
     process.exit(2)
   }
+  const window = parseWindow(argv)
   const target = resolve(targetArg)
 
   if (existsSync(target) && statSync(target).isDirectory() && allFlag) {
@@ -342,10 +380,12 @@ function main() {
   }
   const decoded = decodeLog(logPath)
   if (decoded.error) { console.error(decoded.error); process.exit(2) }
-  const html = renderHtml(decoded.header, decoded.timeline)
+  const sliced = sliceTimeline(decoded.timeline, window.sinceMs, window.untilMs)
+  if (sliced.sliced) console.warn('时间窗口切片: ' + window.since + ' ~ ' + window.until + ',保留 ' + sliced.kept + '/' + decoded.timeline.turns.length + ' 回合')
+  const html = renderHtml(decoded.header, sliced)
   const output = outPath ?? join(process.cwd(), 'trajectory-' + String(decoded.header?.id ?? 'session').slice(0, 8) + '.html')
   writeFileSync(output, html)
-  console.log('rendered ' + decoded.timeline.turns.length + ' turns to ' + output)
+  console.log('rendered ' + sliced.turns.length + ' turns to ' + output)
   console.log('html sha256(前16): ' + createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 16))
 }
 

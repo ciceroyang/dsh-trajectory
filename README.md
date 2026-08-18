@@ -7,6 +7,7 @@ Renders a DeepSeek Harness session log into a **shareable HTML trajectory docume
     node trajectory.mjs <session.jsonl.zstd>
     node trajectory.mjs <sessions-dir>      # newest log wins
     node trajectory.mjs <sessions-dir> --all # merge every session into one chronological volume
+    node trajectory.mjs <log> --since 2026-08-11 --until 2026-08-17   # time-window slice
     node trajectory.mjs <log> --out report.html
 
 Output: one self-contained HTML file (inline CSS, no external assets) plus the first 16 hex chars of its SHA-256.

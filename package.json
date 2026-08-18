@@ -1,6 +1,6 @@
 {
   "name": "dsh-trajectory",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Render a DeepSeek Harness session log into a shareable HTML trajectory document",
   "type": "module",
   "bin": {

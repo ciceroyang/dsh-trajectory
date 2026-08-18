@@ -7,6 +7,7 @@
     node trajectory.mjs <session.jsonl.zstd>
     node trajectory.mjs <会话目录>          # 自动选最新日志
     node trajectory.mjs <会话目录> --all     # 全部会话合并成一本"轨迹合订"(按时间排序)
+    node trajectory.mjs <日志> --since 2026-08-11 --until 2026-08-17   # 时间窗口切片
     node trajectory.mjs <日志> --out 报告.html
 
 输出:单文件 HTML(内联样式,无外部依赖)+ sha256 前 16 位。
