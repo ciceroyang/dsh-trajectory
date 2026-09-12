@@ -4,16 +4,16 @@
  * document: the official Trajectory view's offline, zero-dependency cousin.
  *
  * Usage:
- *   node trajectory.mjs <session.jsonl.zstd>
+ *   node trajectory.mjs <session.jsonl|session.jsonl.zstd>
  *   node trajectory.mjs <workspace-sessions-dir>      # newest log in the tree
  *   node trajectory.mjs <log> --out report.html
  *
  * @module dsh-trajectory
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, realpathSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
 
 const ZSTD_MAGIC = 0xFD2FB528
@@ -348,7 +348,7 @@ function main() {
   const allFlag = argv.includes('--all')
   const targetArg = argv.find((a) => !a.startsWith('--') && a !== (outFlag >= 0 ? argv[outFlag + 1] : undefined) && a !== flagValue(argv, '--since') && a !== flagValue(argv, '--until'))
   if (!targetArg) {
-    console.error('usage: node trajectory.mjs <session.jsonl.zstd|sessions-dir> [--all] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--out file.html]')
+    console.error('usage: node trajectory.mjs <session.jsonl|session.jsonl.zstd|sessions-dir> [--all] [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--out file.html]')
     process.exit(2)
   }
   const window = parseWindow(argv)
@@ -393,5 +393,14 @@ function main() {
   console.log('html sha256(前16): ' + createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 16))
 }
 
-const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+function isMainModule(argv1) {
+  if (!argv1) return false
+  try {
+    return realpathSync(argv1) === realpathSync(fileURLToPath(import.meta.url))
+  } catch {
+    return false
+  }
+}
+
+const isMain = isMainModule(process.argv[1])
 if (isMain) main()

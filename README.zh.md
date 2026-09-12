@@ -2,13 +2,29 @@
 
 把 DeepSeek Harness 会话日志渲染成**可分享的 HTML 轨迹文档**——官方 Trajectory 视图的离屏、零依赖版本。"运行有迹可循"的具象化。
 
-## 用法
+## 快速开始
 
-    node trajectory.mjs <session.jsonl.zstd>
-    node trajectory.mjs <会话目录>          # 自动选最新日志
-    node trajectory.mjs <会话目录> --all     # 全部会话合并成一本"轨迹合订"(按时间排序)
-    node trajectory.mjs <日志> --since 2026-08-11 --until 2026-08-17   # 时间窗口切片(单会话与 --all 合订均支持)
-    node trajectory.mjs <日志> --out 报告.html
+Node.js 18 或更高版本可处理单个未压缩的 `.jsonl` 文件。处理 `.jsonl.zstd` 文件或使用目录模式时，需要 Node.js 22.15 或更高版本，因为这些路径依赖 Node 内置的 zstd 解码器。
+
+无需克隆，直接运行固定的 v0.4.2 版本：
+
+    npx --yes github:ciceroyang/dsh-trajectory#v0.4.2 ./session.jsonl --out report.html
+
+在 Node.js 22.15 或更高版本上，也可以直接处理压缩日志：
+
+    npx --yes github:ciceroyang/dsh-trajectory#v0.4.2 ./session.jsonl.zstd --out report.html
+
+也可以克隆源码：
+
+    git clone https://github.com/ciceroyang/dsh-trajectory.git
+    cd dsh-trajectory
+
+    node trajectory.mjs ./session.jsonl
+    node trajectory.mjs ./session.jsonl.zstd # Node.js >= 22.15
+    node trajectory.mjs ./sessions           # 自动选最新日志
+    node trajectory.mjs ./sessions --all     # 全部会话合并成一本"轨迹合订"(按时间排序)
+    node trajectory.mjs ./session.jsonl --since 2026-08-11 --until 2026-08-17 # 时间窗口切片
+    node trajectory.mjs ./session.jsonl --out 报告.html
 
 输出:单文件 HTML(内联样式,无外部依赖)+ sha256 前 16 位。
 
